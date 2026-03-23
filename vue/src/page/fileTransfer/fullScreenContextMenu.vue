@@ -2,6 +2,7 @@
 import { getImageGenerationInfo, getImageExif } from '@/api'
 import type { FileNodeInfo } from '@/api/files'
 import ExifBrowser from '@/components/ExifBrowser.vue'
+import DraggableImage from '@/components/DraggableImage.vue'
 import { useGlobalStore } from '@/store/useGlobalStore'
 import { useLocalStorage } from '@vueuse/core'
 import type { MenuInfo } from 'ant-design-vue/lib/menu/src/interface'
@@ -18,7 +19,9 @@ import {
   EllipsisOutlined,
   fullscreen,
   SortAscendingOutlined,
-  AppstoreOutlined
+  AppstoreOutlined,
+  EditOutlined,
+  SettingOutlined
 } from '@/icon'
 import { t } from '@/i18n'
 import { createReactiveQueue, unescapeHtml } from '@/util'
@@ -29,7 +32,7 @@ import { parse } from '@/util/stable-diffusion-image-metadata'
 import { useFullscreenLayout } from '@/util/useFullscreenLayout'
 import { useMouseInElement } from '@vueuse/core'
 import { closeImageFullscreenPreview } from '@/util/imagePreviewOperation'
-import { openAddNewTagModal } from '@/components/functionalCallableComp'
+import { openAddNewTagModal, openEditPromptModal } from '@/components/functionalCallableComp'
 import { prefix } from '@/util/const'
 // @ts-ignore
 import * as Pinyin from 'jian-pinyin'
@@ -183,7 +186,7 @@ function getParNode (p: any) {
 }
 
 function getTextLength(text: string): number {
-  // 中文字符按3个英文字母计算
+  // chinese characters are counted as 3 English letters
   let length = 0
   for (const char of text) {
     if (/[\u4e00-\u9fa5]/.test(char)) {
@@ -434,6 +437,18 @@ Please return only tag names, do not include any other content.`
   }
 }
 
+// 编辑提示词并重新加载
+const editPromptAndReload = async () => {
+  await openEditPromptModal(props.file)
+  const path = props.file?.fullpath
+  if (path) {
+    q.tasks.forEach((v) => v.cancel())
+    q.pushAction(() => getImageGenerationInfo(path)).res.then((v) => {
+      imageGenInfo.value = v
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -442,6 +457,7 @@ Please return only tag names, do not include any other content.`
 
     <div v-if="lr">
     </div>
+
     <div class="container">
       <div class="action-bar">
         <div v-if="!lr" ref="dragHandle" class="icon" style="cursor: grab" :title="t('dragToMovePanel')">
@@ -453,6 +469,22 @@ Please return only tag names, do not include any other content.`
           <FullscreenExitOutlined v-if="showFullContent" />
           <FullscreenOutlined v-else />
         </div>
+        <a-dropdown :get-popup-container="getParNode" trigger="click">
+          <div class="icon" style="cursor: pointer">
+            <SettingOutlined />
+          </div>
+          <template #overlay>
+            <div class="block-visibility-settings">
+              <div class="settings-title">{{ $t('blockVisibilitySettings') }}</div>
+              <div class="settings-list">
+                <div class="settings-item" v-for="(_, key) in global.fullscreenMenuBlockVisibility" :key="key">
+                  <a-switch v-model:checked="global.fullscreenMenuBlockVisibility[key]" size="small" />
+                  <span class="settings-label">{{ $t(`blockName_${key}`) }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </a-dropdown>
         <div style="display: flex; flex-direction: column; align-items: center; cursor: grab" class="icon"
           :title="t('fullscreenview')" @click="requestFullscreen">
           <img :src="fullscreen" style="width: 21px;height: 21px;padding-bottom: 2px;" alt="">
@@ -467,7 +499,7 @@ Please return only tag names, do not include any other content.`
           </template>
         </a-dropdown>
         <div flex-placeholder v-if="showFullContent" />
-        <div v-if="showFullContent" class="action-bar">
+        <div block  v-if="showFullContent && global.fullscreenMenuBlockVisibility.actionBar" class="action-bar">
 
           <a-dropdown :trigger="['hover']" :get-popup-container="getParNode">
             <a-button>{{ t('openContextMenu') }}</a-button>
@@ -516,7 +548,6 @@ Please return only tag names, do not include any other content.`
           }}</a-button>
           <a-button 
             @click="analyzeTagsWithAI"
-            type="primary"
             :loading="analyzingTags"
             v-if="imageGenInfo && global.conf?.all_custom_tags?.length"
           >
@@ -528,11 +559,17 @@ Please return only tag names, do not include any other content.`
             type="default"
           >
             {{ $t('tiktokView') }}
+          </a-button>         <a-button
+            @click="editPromptAndReload"
+          >
+            <template #icon><EditOutlined /></template>
+            {{ $t('editPrompt') }}
           </a-button>
         </div>
-      </div>
+      </div>    
       <div class="gen-info" v-if="showFullContent">
-        <div class="info-tags">
+    
+        <div block  v-if="global.fullscreenMenuBlockVisibility.infoTags" class="info-tags">
           <span class="info-tag">
             <span class="name">
               {{ $t('fileName') }}
@@ -554,7 +591,7 @@ Please return only tag names, do not include any other content.`
             </span>
           </span>
         </div>
-        <div class="tags-container" v-if="global.conf?.all_custom_tags">
+        <div block class="tags-container" v-if="global.conf?.all_custom_tags && global.fullscreenMenuBlockVisibility.tagsContainer">
           <div class="sort-tag-switch" @click="tagA2ZClassify = !tagA2ZClassify">
             <SortAscendingOutlined v-if="!tagA2ZClassify" />
             <AppstoreOutlined v-else />
@@ -583,7 +620,7 @@ Please return only tag names, do not include any other content.`
             </div>
           </template>
         </div>
-        <div class="lr-layout-control">
+        <div block class="lr-layout-control" v-if="global.fullscreenMenuBlockVisibility.lrLayoutControl">
           <div class="ctrl-item">
             {{ $t('experimentalLRLayout') }}： <a-switch v-model:checked="lr" size="small" />
           </div>
@@ -600,22 +637,57 @@ Please return only tag names, do not include any other content.`
             </a-tooltip>
           </template>
         </div>
-        <a-tabs v-model:activeKey="promptTabActivedKey">
+        <!-- 可拖拽的原图 -->
+        <DraggableImage block v-if="global.fullscreenMenuBlockVisibility.draggableImage" :file="file">
+          <div class="custom-drag-trigger">
+            <DragOutlined class="trigger-icon" />
+            <span class="trigger-text">{{ $t('dragImageToTransfer') }}</span>
+          </div>
+        </DraggableImage>
+
+        <a-tabs block v-if="global.fullscreenMenuBlockVisibility.tabs" v-model:activeKey="promptTabActivedKey">
           <a-tab-pane key="structedData" :tab="$t('structuredData')">
             <div>
               <template v-if="geninfoStruct.prompt">
                 <br />
-                <h3>Prompt</h3>
+                <div class="section-header">
+                  <h3>Prompt</h3>
+                  <button
+                    class="edit-section-btn"
+                    @click="editPromptAndReload"
+                    :title="$t('editPrompt')"
+                  >
+                    <EditOutlined />
+                  </button>
+                </div>
                 <code v-html="spanWrap(geninfoStruct.prompt ?? '')"></code>
               </template>
               <template v-if="geninfoStruct.negativePrompt">
                 <br />
-                <h3>Negative Prompt</h3>
-                <code v-html="spanWrap(geninfoStruct.negativePrompt ?? '')"></code>
+                <div class="section-header">
+                  <h3>Negative Prompt</h3>
+                  <button
+                    class="edit-section-btn"
+                    @click="editPromptAndReload"
+                    :title="$t('editPrompt')"
+                  >
+                    <EditOutlined />
+                  </button>
+                </div>
+                <code v-html="spanWrap(geninfoStruct.negativePrompt ?? '')"></code> 
               </template>
             </div>
             <template v-if="Object.keys(geninfoStructNoPrompts).length"> <br />
-              <h3>Params</h3>
+              <div class="section-header">
+                <h3>Params</h3>
+                <button
+                  class="edit-section-btn"
+                  @click="editPromptAndReload"
+                  :title="$t('editPrompt')"
+                >
+                  <EditOutlined />
+                </button>
+              </div>
               <table>
                 <tr v-for="txt, key in geninfoStructNoPrompts" :key="key" class="gen-info-frag">
                   <td style="font-weight: 600;text-transform: capitalize;">{{ key }}</td>
@@ -629,7 +701,16 @@ Please return only tag names, do not include any other content.`
               </table>
             </template>
             <template v-if="extraJsonMetaInfo && Object.keys(extraJsonMetaInfo).length"> <br />
-              <h3>Extra Meta Info</h3>
+              <div class="section-header">
+                <h3>Extra Meta Info</h3>
+                <button
+                  class="edit-section-btn"
+                  @click="editPromptAndReload"
+                  :title="$t('editPrompt')"
+                >
+                  <EditOutlined />
+                </button>
+              </div>
               <table class="extra-meta-table">
                 <tr v-for="(val, key) in extraJsonMetaInfo" :key="key" class="gen-info-frag">
                   <td style="font-weight: 600;text-transform: capitalize;">{{ key }}</td>
@@ -728,7 +809,6 @@ Please return only tag names, do not include any other content.`
         .natural-text {
           margin: 0.5em 0;
           line-height: 1.6em;
-          text-align: justify;
           color: var(--zp-primary);
         }
 
@@ -913,6 +993,88 @@ Please return only tag names, do not include any other content.`
     align-items: center;
     gap: 4px;
     flex-wrap: nowrap;
+  }
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 6px;
+
+  h3 {
+    margin: 0;
+  }
+
+  .edit-section-btn {
+    margin: 0;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    color: var(--zp-primary);
+    font-size: 12px;
+    line-height: 1;
+    min-width: 22px;
+    min-height: 22px;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: var(--zp-luminous);
+      transform: scale(1.05);
+    }
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    :deep(.anticon) {
+      font-size: 12px;
+    }
+  }
+}
+
+.block-visibility-settings {
+  background: var(--zp-primary-background);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--zp-secondary);
+
+  .settings-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--zp-secondary);
+    color: var(--zp-primary);
+  }
+
+  .settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+
+    .settings-label {
+      flex: 1;
+      font-size: 13px;
+      color: var(--zp-primary);
+    }
   }
 }
 </style>

@@ -223,6 +223,13 @@ You can specify which snapshot to restore to when starting IIB in the global set
   resolution: 'Resolution',
   fileSize: 'File Size',
   fullscreenview: 'Fullscreen View',
+  blockVisibilitySettings: 'Panel Settings',
+  blockName_actionBar: 'Action Buttons',
+  blockName_infoTags: 'File Info Tags',
+  blockName_tagsContainer: 'Custom Tags',
+  blockName_lrLayoutControl: 'Layout Control',
+  blockName_draggableImage: 'Draggable Image',
+  blockName_tabs: 'Prompt Tabs',
   promptcompare: 'Compare Prompts',
   imgCompare: 'Image Comparison',
   share: 'Share',
@@ -579,5 +586,41 @@ You can specify which snapshot to restore to when starting IIB in the global set
   loadingTip10: '🤖 AI Agent Integration\n\nYou can now let AI agents use IIB to help with image management, tag organization, and smart search. Through the API interface, AI can access all IIB features for automated workflows.|info',
 
   // ===== Video Inline Play =====
-  playInline: 'Play Here'
+  playInline: 'Play Here',
+
+  // ===== Prompt Editing =====
+  editPrompt: 'Edit',
+  editPromptTitle: 'Edit Prompt - {name}',
+  positivePrompt: 'Positive Prompt',
+  negativePrompt: 'Negative Prompt',
+  otherInfo: 'Other Info',
+  savePrompt: 'Save Prompt',
+  savePromptSuccess: 'Prompt saved successfully',
+  savePromptFailed: 'Failed to save prompt',
+  promptEditedMark: 'Manually edited',
+  promptModifiedTip: 'This prompt has been manually edited and will override the original prompt from the file',
+
+  // PromptEditorModal related
+  positivePromptRequired: 'Positive prompt cannot be empty',
+  fixErrorsBeforeSave: 'Please fix all errors before saving',
+  extraMetaInfoTitle: 'Extra Meta Info (KV Editor)',
+  addKvButton: '+ Add',
+  extraMetaInfoHint: 'Can save any complex information, a perfect supplement to the limitations of params format. In JSON mode, it also supports any valid JSON values (objects, arrays, numbers, booleans, etc.)',
+  noExtraMetaInfo: 'No Extra Meta Info, click "Add" button to add key-value pairs',
+  otherInfoHint: 'Only supports simple strings or numbers, cannot contain special symbols or line breaks',
+
+  // KvPairEditor related
+  keyRequired: 'Key cannot be empty',
+  keyMustBeUnique: 'Key already exists, please use a unique key',
+  jsonFormatError: 'JSON format error, please check syntax',
+  stringMode: 'String',
+  jsonMode: 'JSON',
+  delete: 'Delete',
+  keyPlaceholder: 'Key',
+  jsonValuePlaceholder: 'JSON Value',
+  stringValuePlaceholder: 'String Value',
+  clearBeforeSwitchToJson: 'Please clear current value before switching to JSON mode',
+  clearBeforeSwitchToString: 'Please clear current value before switching to string mode',
+  dragImageToTransfer: 'Click to get original image, grab and drag to other apps',
+  dragImage: 'Click to get original image, grab and drag to other apps'
 }
