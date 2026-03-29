@@ -17,6 +17,7 @@ from scripts.iib.tool import (
     get_formatted_date,
     get_modified_date,
     is_win,
+    is_dev,
     cwd,
     locale,
     enable_access_control,
@@ -852,8 +853,14 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
         from scripts.iib.db.update_image_data import get_exif_data
         conn = DataBase.get_conn()
         try:
-            # 优先从数据库查询
             img = DbImg.get(conn, path)
+
+            # dev 模式下，未编辑过的直接从文件读取（方便调试 EXIF 解析）
+            if is_dev and (not img or not img.exif_edited):
+                result = get_exif_data(path)
+                return result.raw_info or ""
+
+            # 优先从数据库查询
             if img and img.exif:
                 return img.exif
 
