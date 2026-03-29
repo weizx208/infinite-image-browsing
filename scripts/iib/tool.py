@@ -4,6 +4,7 @@ import json
 import os
 import platform
 import re
+import struct
 import tempfile
 import subprocess
 from typing import Dict, List, Optional, Any
@@ -466,7 +467,7 @@ def is_img_created_by_comfyui(img: Image):
     if img.format == "PNG":
         prompt = img.info.get('prompt') or img.info.get('parameters')
         return prompt and (img.info.get('workflow') or ("class_type" in prompt)) # ermanitu
-    elif img.format == "WEBP":
+    elif img.format == "WEBP" or img.format == "JPEG":
         exif = img.info.get("exif")
         split = [x.decode("utf-8", errors="ignore") for x in exif.split(b"\x00")]
         workflow_str = find(split, lambda x: x.lower().startswith("workflow:"))
@@ -479,8 +480,27 @@ def is_img_created_by_comfyui(img: Image):
                 and prompt
                 and any("class_type" in x.keys() for x in prompt.values())
             )
-        else:
-            return False
+        # Fallback: non-standard EXIF (e.g. UserComment in IFD0 with type BYTE)
+        # where null-byte split produces single chars instead of meaningful entries
+        raw = _extract_usercomment_from_raw_exif(exif)
+        if raw:
+            try:
+                decoded = raw.decode("utf-16", errors="ignore").strip('\x00')
+            except Exception:
+                decoded = raw.decode("utf-8", errors="ignore").strip('\x00')
+            if decoded:
+                wf = find([decoded], lambda x: x.lower().startswith("workflow:"))
+                pt = find([decoded], lambda x: x.lower().startswith("prompt:"))
+                if wf and pt:
+                    try:
+                        workflow = json.loads(wf.split(":", 1)[1])
+                        prompt = json.loads(pt.split(":", 1)[1])
+                        return workflow and prompt and any(
+                            "class_type" in x.keys() for x in prompt.values()
+                        )
+                    except Exception:
+                        pass
+        return False
     else:
         return False  # unsupported format
 
@@ -726,6 +746,40 @@ def comfyui_exif_data_to_str(data):
         meta_arr.append(f'{k}: {v}')
     return res + ", ".join(meta_arr)
 
+def _extract_usercomment_from_raw_exif(exif_bytes: bytes):
+    """Fallback: extract UserComment (tag 0x9286) from raw EXIF bytes when piexif fails."""
+    try:
+        if exif_bytes[:6] != b'Exif\x00\x00' or len(exif_bytes) < 14:
+            return None
+        bo = exif_bytes[6:8]
+        if bo == b'MM':
+            fmt_h, fmt_i = '>H', '>I'
+        elif bo == b'II':
+            fmt_h, fmt_i = '<H', '<I'
+        else:
+            return None
+        ifd0_off = struct.unpack(fmt_i, exif_bytes[10:14])[0]
+        pos = 6 + ifd0_off
+        if pos + 2 > len(exif_bytes):
+            return None
+        num = struct.unpack(fmt_h, exif_bytes[pos:pos+2])[0]
+        for i in range(num):
+            ep = pos + 2 + i * 12
+            if ep + 12 > len(exif_bytes):
+                break
+            tag = struct.unpack(fmt_h, exif_bytes[ep:ep+2])[0]
+            if tag == 0x9286:
+                count = struct.unpack(fmt_i, exif_bytes[ep+4:ep+8])[0]
+                val = struct.unpack(fmt_i, exif_bytes[ep+8:ep+12])[0]
+                if count <= 4:
+                    return exif_bytes[ep+8:ep+8+count]
+                dp = 6 + val
+                return exif_bytes[dp:dp+count] if dp + count <= len(exif_bytes) else None
+        return None
+    except Exception:
+        return None
+
+
 def read_sd_webui_gen_info_from_image(image: Image, path="") -> str:
     """
     Reads metadata from an image file.
@@ -751,6 +805,16 @@ def read_sd_webui_gen_info_from_image(image: Image, path="") -> str:
         if exif_comment:
             items["exif comment"] = exif_comment
             geninfo = exif_comment
+        elif not geninfo:
+            raw = _extract_usercomment_from_raw_exif(items["exif"])
+            if raw:
+                try:
+                    exif_comment = raw.decode("utf-16", errors="ignore").strip('\x00')
+                except Exception:
+                    exif_comment = raw.decode("utf-8", errors="ignore").strip('\x00')
+                if exif_comment:
+                    items["exif comment"] = exif_comment
+                    geninfo = exif_comment
 
     if not geninfo and path:
         try:
